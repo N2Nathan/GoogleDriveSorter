@@ -18,6 +18,9 @@ import {
 
 const API_URL = 'http://localhost:3001';
 
+// Configure axios to send cookies with every request
+axios.defaults.withCredentials = true;
+
 function App() {
   const [authenticated, setAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);

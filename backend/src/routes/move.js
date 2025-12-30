@@ -2,11 +2,15 @@ import express from 'express';
 import { getDriveClient } from '../config/google.js';
 import { getTokens, logFileMove, getMoveLogs, undoMoves } from '../database/db.js';
 import { v4 as uuidv4 } from 'uuid';
+import { requireAuth } from '../middleware/auth.js';
 
 const router = express.Router();
 
-async function getAuthenticatedDrive() {
-  const tokens = await getTokens('default_user');
+// Apply authentication middleware to all routes
+router.use(requireAuth);
+
+async function getAuthenticatedDrive(userId) {
+  const tokens = await getTokens(userId);
   if (!tokens) {
     throw new Error('Not authenticated');
   }
@@ -16,8 +20,9 @@ async function getAuthenticatedDrive() {
 // Move files to folders
 router.post('/execute', async (req, res) => {
   try {
+    const userId = req.session.userId;
     const { moves, existingFolders = [] } = req.body; // Array of { fileId, fileName, targetFolderId, targetFolderName, createIfNeeded }
-    const drive = await getAuthenticatedDrive();
+    const drive = await getAuthenticatedDrive(userId);
     const batchId = uuidv4();
     const results = [];
     const createdFolders = new Map(); // Cache for created folders
@@ -55,6 +60,7 @@ router.post('/execute', async (req, res) => {
 
         // Log the move
         await logFileMove({
+          userId,
           fileId: move.fileId,
           fileName: move.fileName,
           originalParentId: previousParents || 'root',
@@ -153,8 +159,9 @@ function getFolderPath(folder, allFolders) {
 // Create a new folder
 router.post('/create-folder', async (req, res) => {
   try {
+    const userId = req.session.userId;
     const { folderName, parentId, existingFolders = [] } = req.body;
-    const drive = await getAuthenticatedDrive();
+    const drive = await getAuthenticatedDrive(userId);
 
     // Check if it's a nested path (contains /)
     if (folderName.includes('/')) {
@@ -183,8 +190,9 @@ router.post('/create-folder', async (req, res) => {
 // Rename a file
 router.post('/rename', async (req, res) => {
   try {
+    const userId = req.session.userId;
     const { fileId, newName } = req.body;
-    const drive = await getAuthenticatedDrive();
+    const drive = await getAuthenticatedDrive(userId);
 
     const file = await drive.files.update({
       fileId: fileId,
@@ -202,8 +210,9 @@ router.post('/rename', async (req, res) => {
 // Get move history
 router.get('/history', async (req, res) => {
   try {
+    const userId = req.session.userId;
     const { limit, batchId } = req.query;
-    const logs = await getMoveLogs({
+    const logs = await getMoveLogs(userId, {
       limit: limit ? parseInt(limit) : 100,
       batchId
     });
@@ -218,11 +227,12 @@ router.get('/history', async (req, res) => {
 // Undo a batch of moves
 router.post('/undo', async (req, res) => {
   try {
+    const userId = req.session.userId;
     const { batchId } = req.body;
-    const drive = await getAuthenticatedDrive();
+    const drive = await getAuthenticatedDrive(userId);
 
     // Get all moves for this batch
-    const logs = await getMoveLogs({ batchId });
+    const logs = await getMoveLogs(userId, { batchId });
 
     const results = [];
     for (const log of logs) {
@@ -257,7 +267,7 @@ router.post('/undo', async (req, res) => {
     }
 
     // Mark batch as undone
-    await undoMoves(batchId);
+    await undoMoves(userId, batchId);
 
     res.json({ results });
   } catch (error) {

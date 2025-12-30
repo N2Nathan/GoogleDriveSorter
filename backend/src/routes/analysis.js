@@ -2,16 +2,21 @@ import express from 'express';
 import { analyzeFileName, performOCR, analyzeFileContent } from '../services/analysis.js';
 import { getCachedAnalysis, saveCachedAnalysis } from '../database/db.js';
 import { analyzeFileForClient, shouldOrganizeByClient, getClientFolderPath } from '../services/clientDetection.js';
+import { requireAuth } from '../middleware/auth.js';
 
 const router = express.Router();
+
+// Apply authentication middleware to all routes
+router.use(requireAuth);
 
 // Analyze a single file
 router.post('/file', async (req, res) => {
   try {
+    const userId = req.session.userId;
     const { fileId, fileName, mimeType, content } = req.body;
 
     // Check cache first
-    const cached = await getCachedAnalysis(fileId);
+    const cached = await getCachedAnalysis(userId, fileId);
     if (cached) {
       return res.json({
         fileId,
@@ -53,7 +58,7 @@ router.post('/file', async (req, res) => {
     }
 
     // Save to cache
-    await saveCachedAnalysis(fileId, fileName, analysis.suggestedName, analysis);
+    await saveCachedAnalysis(userId, fileId, fileName, analysis.suggestedName, analysis);
 
     res.json({
       fileId,
@@ -71,13 +76,14 @@ router.post('/file', async (req, res) => {
 // Batch analyze multiple files
 router.post('/batch', async (req, res) => {
   try {
+    const userId = req.session.userId;
     const { files, includeClientDetection = true } = req.body;
     const results = [];
 
     for (const file of files) {
       try {
         // Check cache
-        const cached = await getCachedAnalysis(file.fileId);
+        const cached = await getCachedAnalysis(userId, file.fileId);
         if (cached) {
           results.push({
             fileId: file.fileId,
@@ -106,7 +112,7 @@ router.post('/batch', async (req, res) => {
         // Add client to analysis
         analysis.client = detectedClient;
 
-        await saveCachedAnalysis(file.fileId, file.fileName, analysis.suggestedName, analysis);
+        await saveCachedAnalysis(userId, file.fileId, file.fileName, analysis.suggestedName, analysis);
 
         results.push({
           fileId: file.fileId,

@@ -1,12 +1,16 @@
 import express from 'express';
 import { getDriveClient } from '../config/google.js';
 import { getTokens } from '../database/db.js';
+import { requireAuth } from '../middleware/auth.js';
 
 const router = express.Router();
 
-// Get authenticated drive client
-async function getAuthenticatedDrive() {
-  const tokens = await getTokens('default_user');
+// Apply authentication middleware to all routes
+router.use(requireAuth);
+
+// Get authenticated drive client for current user
+async function getAuthenticatedDrive(userId) {
+  const tokens = await getTokens(userId);
   if (!tokens) {
     throw new Error('Not authenticated');
   }
@@ -16,7 +20,7 @@ async function getAuthenticatedDrive() {
 // Get all files not in folders (root-level files)
 router.get('/unorganized-files', async (req, res) => {
   try {
-    const drive = await getAuthenticatedDrive();
+    const drive = await getAuthenticatedDrive(req.session.userId);
 
     const response = await drive.files.list({
       q: "'root' in parents and trashed = false",
@@ -34,7 +38,7 @@ router.get('/unorganized-files', async (req, res) => {
 // Get all folders
 router.get('/folders', async (req, res) => {
   try {
-    const drive = await getAuthenticatedDrive();
+    const drive = await getAuthenticatedDrive(req.session.userId);
 
     const response = await drive.files.list({
       q: "mimeType='application/vnd.google-apps.folder' and trashed = false",
@@ -52,7 +56,7 @@ router.get('/folders', async (req, res) => {
 // Get folder structure (nested)
 router.get('/folder-structure', async (req, res) => {
   try {
-    const drive = await getAuthenticatedDrive();
+    const drive = await getAuthenticatedDrive(req.session.userId);
 
     const response = await drive.files.list({
       q: "mimeType='application/vnd.google-apps.folder' and trashed = false",
@@ -91,7 +95,7 @@ router.get('/folder-structure', async (req, res) => {
 // Download file content for analysis
 router.get('/file/:fileId/content', async (req, res) => {
   try {
-    const drive = await getAuthenticatedDrive();
+    const drive = await getAuthenticatedDrive(req.session.userId);
     const { fileId } = req.params;
 
     const file = await drive.files.get({
