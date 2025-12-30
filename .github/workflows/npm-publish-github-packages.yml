@@ -10,13 +10,18 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        package: [backend, frontend]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - run: npm ci
-      - run: npm test
+      - name: Install dependencies for ${{ matrix.package }}
+        run: cd ${{ matrix.package }} && npm ci
+      - name: Run tests for ${{ matrix.package }}
+        run: cd ${{ matrix.package }} && npm test --if-present
 
   publish-gpr:
     needs: build
@@ -24,13 +29,18 @@ jobs:
     permissions:
       contents: read
       packages: write
+    strategy:
+      matrix:
+        package: [backend, frontend]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           registry-url: https://npm.pkg.github.com/
-      - run: npm ci
-      - run: npm publish
+      - name: Install dependencies for ${{ matrix.package }}
+        run: cd ${{ matrix.package }} && npm ci
+      - name: Publish ${{ matrix.package }} package
+        run: cd ${{ matrix.package }} && npm publish
         env:
           NODE_AUTH_TOKEN: ${{secrets.GITHUB_TOKEN}}
