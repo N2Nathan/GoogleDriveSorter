@@ -90,12 +90,24 @@ services:
 
 ## GitHub Release
 
-A Git tag `v1.0.0` has been created with the release.
+A Git tag `v1.0.0` has been created locally.
 
-To create a GitHub Release:
+**Note:** Due to branch restrictions, tags must be pushed from a local environment or created directly on GitHub.
+
+### Option 1: Push Tag from Local Environment
+
+If you have the repository cloned locally:
+
+```bash
+git pull origin claude/google-drive-organizer-iS4vW
+git tag -a v1.0.0 -m "Release v1.0.0"
+git push origin v1.0.0
+```
+
+### Option 2: Create Release Directly on GitHub
 
 1. Go to: https://github.com/N2Nathan/GoogleDriveSorter/releases/new
-2. Select tag: `v1.0.0`
+2. Click "Choose a tag" and type: `v1.0.0` (create new tag)
 3. Release title: `v1.0.0 - Google Drive Organizer`
 4. Description:
 
