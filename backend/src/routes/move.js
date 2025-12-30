@@ -16,13 +16,27 @@ async function getAuthenticatedDrive() {
 // Move files to folders
 router.post('/execute', async (req, res) => {
   try {
-    const { moves } = req.body; // Array of { fileId, fileName, targetFolderId, targetFolderName }
+    const { moves, existingFolders = [] } = req.body; // Array of { fileId, fileName, targetFolderId, targetFolderName, createIfNeeded }
     const drive = await getAuthenticatedDrive();
     const batchId = uuidv4();
     const results = [];
+    const createdFolders = new Map(); // Cache for created folders
 
     for (const move of moves) {
       try {
+        let targetFolderId = move.targetFolderId;
+
+        // If no targetFolderId provided but we need to create nested folders
+        if (!targetFolderId && move.createIfNeeded && move.targetFolderName.includes('/')) {
+          // Check cache first
+          if (createdFolders.has(move.targetFolderName)) {
+            targetFolderId = createdFolders.get(move.targetFolderName);
+          } else {
+            targetFolderId = await createNestedFolders(drive, move.targetFolderName, existingFolders);
+            createdFolders.set(move.targetFolderName, targetFolderId);
+          }
+        }
+
         // Get current parents
         const file = await drive.files.get({
           fileId: move.fileId,
@@ -34,7 +48,7 @@ router.post('/execute', async (req, res) => {
         // Move file
         await drive.files.update({
           fileId: move.fileId,
-          addParents: move.targetFolderId,
+          addParents: targetFolderId,
           removeParents: previousParents,
           fields: 'id, parents'
         });
@@ -44,7 +58,7 @@ router.post('/execute', async (req, res) => {
           fileId: move.fileId,
           fileName: move.fileName,
           originalParentId: previousParents || 'root',
-          newParentId: move.targetFolderId,
+          newParentId: targetFolderId,
           originalParentName: 'Root',
           newParentName: move.targetFolderName,
           batchId
@@ -71,24 +85,95 @@ router.post('/execute', async (req, res) => {
   }
 });
 
+// Helper function to create nested folders
+async function createNestedFolders(drive, folderPath, existingFolders) {
+  const parts = folderPath.split('/').filter(p => p.length > 0);
+  let currentParentId = 'root';
+
+  for (let i = 0; i < parts.length; i++) {
+    const folderName = parts[i];
+    const currentPath = parts.slice(0, i + 1).join('/');
+
+    // Check if folder already exists at this level
+    let existingFolder = existingFolders.find(f => {
+      const folderPath = getFolderPath(f, existingFolders);
+      return folderPath === currentPath || f.name === folderName;
+    });
+
+    // Also check by querying Drive
+    if (!existingFolder) {
+      const query = `name='${folderName.replace(/'/g, "\\'")}' and '${currentParentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+      const response = await drive.files.list({
+        q: query,
+        fields: 'files(id, name)',
+        pageSize: 1
+      });
+
+      if (response.data.files && response.data.files.length > 0) {
+        existingFolder = response.data.files[0];
+      }
+    }
+
+    if (existingFolder) {
+      currentParentId = existingFolder.id;
+    } else {
+      // Create the folder
+      const fileMetadata = {
+        name: folderName,
+        mimeType: 'application/vnd.google-apps.folder',
+        parents: [currentParentId]
+      };
+
+      const folder = await drive.files.create({
+        resource: fileMetadata,
+        fields: 'id, name'
+      });
+
+      currentParentId = folder.data.id;
+      existingFolders.push({ id: folder.data.id, name: folderName, parents: [currentParentId] });
+    }
+  }
+
+  return currentParentId;
+}
+
+function getFolderPath(folder, allFolders) {
+  if (!folder.parents || folder.parents.length === 0 || folder.parents[0] === 'root') {
+    return folder.name;
+  }
+
+  const parent = allFolders.find(f => f.id === folder.parents[0]);
+  if (parent) {
+    return getFolderPath(parent, allFolders) + '/' + folder.name;
+  }
+
+  return folder.name;
+}
+
 // Create a new folder
 router.post('/create-folder', async (req, res) => {
   try {
-    const { folderName, parentId } = req.body;
+    const { folderName, parentId, existingFolders = [] } = req.body;
     const drive = await getAuthenticatedDrive();
 
-    const fileMetadata = {
-      name: folderName,
-      mimeType: 'application/vnd.google-apps.folder',
-      parents: parentId ? [parentId] : ['root']
-    };
+    // Check if it's a nested path (contains /)
+    if (folderName.includes('/')) {
+      const folderId = await createNestedFolders(drive, folderName, existingFolders);
+      res.json({ folder: { id: folderId, name: folderName } });
+    } else {
+      const fileMetadata = {
+        name: folderName,
+        mimeType: 'application/vnd.google-apps.folder',
+        parents: parentId ? [parentId] : ['root']
+      };
 
-    const folder = await drive.files.create({
-      resource: fileMetadata,
-      fields: 'id, name'
-    });
+      const folder = await drive.files.create({
+        resource: fileMetadata,
+        fields: 'id, name'
+      });
 
-    res.json({ folder: folder.data });
+      res.json({ folder: folder.data });
+    }
   } catch (error) {
     console.error('Error creating folder:', error);
     res.status(500).json({ error: 'Failed to create folder' });

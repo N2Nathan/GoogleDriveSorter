@@ -1,16 +1,23 @@
 # Google Drive Organizer
 
-An intelligent Google Drive file organizer with OCR, AI-powered file naming, and smart folder suggestions. Organize thousands of unorganized files with just a few clicks.
+An intelligent Google Drive file organizer with OCR, AI-powered file naming, client detection, and smart folder suggestions. Automatically detects client projects from document content and organizes files into client-specific folders.
 
 ## Features
 
 - **Google Drive Authentication**: Secure OAuth2 integration with Google Drive
 - **Intelligent File Scanning**: Automatically finds all files not organized in folders
+- **Client Detection** (NEW): Intelligently detects client names from document content
+  - Extracts client names from filenames, OCR text, and document content
+  - Pattern matching for invoices, contracts, company names
+  - AI-powered client detection with confidence scoring
+  - Automatically creates "Clients/[ClientName]" folder structure
+  - Visual confidence indicators (e.g., "85% confident")
 - **OCR Integration**: Extract text from images and PDFs using Tesseract.js
 - **AI-Powered Naming**: Uses OpenAI to suggest better file names for generic or unclear filenames
 - **Smart Folder Suggestions**: Automatically categorizes files and suggests folder structures
 - **Interactive UI**:
   - View files grouped by suggested folders
+  - Client folders displayed with briefcase icon and confidence badge
   - Select which file groups to move
   - Manual override to move files to different folders
   - Expand/collapse file groups
@@ -175,9 +182,54 @@ npm run preview
 3. Click "Undo" to reverse an entire batch of moves
 4. Files will be moved back to their original locations
 
+## Client Detection
+
+The app intelligently detects client names from your documents and organizes them into client-specific folders.
+
+### How It Works
+
+1. **Pattern Matching**: Scans filenames and document content for:
+   - Explicit client mentions ("Client: Acme Corp", "For: XYZ Inc")
+   - Company suffixes (Inc., LLC, Ltd., Corp., etc.)
+   - Invoice/contract patterns ("Invoice to:", "Agreement with:")
+   - Attention patterns ("ATTN:", "To:")
+   - Project codes
+
+2. **OCR Analysis**: Extracts text from images and PDFs to find client references
+
+3. **AI Detection**: Uses OpenAI to analyze document content and identify the primary client
+
+4. **Confidence Scoring**: Each detection gets a confidence score (0-100%)
+   - Multiple mentions increase confidence
+   - Different sources (filename, OCR, content) boost confidence
+   - Minimum 30% confidence required for document files
+   - Higher threshold (50%) for other file types
+
+### Client Folder Structure
+
+Detected client files are organized into:
+```
+Clients/
+  ├── Acme Corporation/
+  │   ├── invoice_2024.pdf
+  │   └── contract.docx
+  ├── XYZ Industries/
+  │   └── project_proposal.pdf
+  └── Tech Solutions LLC/
+      ├── requirements.doc
+      └── mockup.png
+```
+
+### Visual Indicators
+
+- Client folders display with a **briefcase icon** (vs. regular folder icon)
+- Confidence badge shows detection certainty (e.g., "85% confident")
+- Purple border highlights client-detected folders
+- Organized by confidence (highest first)
+
 ## File Categorization
 
-The app automatically categorizes files into these folders:
+Files without detected clients are categorized into these folders:
 
 - **Documents**: PDF, DOC, DOCX, TXT, RTF
 - **Receipts & Invoices**: Files containing keywords like "invoice", "receipt", "bill"

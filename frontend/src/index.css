@@ -179,6 +179,15 @@ body {
   box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
 }
 
+.folder-group.client-folder {
+  border-color: #764ba2;
+}
+
+.folder-group.client-folder.selected {
+  border-color: #764ba2;
+  box-shadow: 0 4px 12px rgba(118, 75, 162, 0.3);
+}
+
 .folder-header {
   background: #f8f9fa;
   padding: 1rem 1.5rem;

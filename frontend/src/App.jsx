@@ -11,7 +11,9 @@ import {
   RotateCcw,
   Upload,
   AlertCircle,
-  CheckCircle
+  CheckCircle,
+  Briefcase,
+  Award
 } from 'lucide-react';
 
 const API_URL = 'http://localhost:3001';
@@ -176,7 +178,8 @@ function App() {
         // Create folder if it doesn't exist
         if (!group.exists) {
           const createResponse = await axios.post(`${API_URL}/api/move/create-folder`, {
-            folderName: group.folderName
+            folderName: group.folderName,
+            existingFolders: folders
           });
           targetFolderId = createResponse.data.folder.id;
         }
@@ -188,12 +191,16 @@ function App() {
             targetFolderId: file.overrideFolderId || targetFolderId,
             targetFolderName: file.overrideFolderId
               ? folders.find(f => f.id === file.overrideFolderId)?.name || group.folderName
-              : group.folderName
+              : group.folderName,
+            createIfNeeded: !group.exists && group.isClientFolder
           });
         }
       }
 
-      const response = await axios.post(`${API_URL}/api/move/execute`, { moves });
+      const response = await axios.post(`${API_URL}/api/move/execute`, {
+        moves,
+        existingFolders: folders
+      });
 
       const successCount = response.data.results.filter(r => r.success).length;
       setAlert({
@@ -343,7 +350,7 @@ function App() {
             {folderGroups.map(group => (
               <div
                 key={group.folderName}
-                className={`folder-group ${selectedGroups.has(group.folderName) ? 'selected' : ''}`}
+                className={`folder-group ${selectedGroups.has(group.folderName) ? 'selected' : ''} ${group.isClientFolder ? 'client-folder' : ''}`}
               >
                 <div className="folder-header" onClick={() => toggleGroupExpansion(group.folderName)}>
                   <div className="folder-info">
@@ -352,12 +359,29 @@ function App() {
                     ) : (
                       <ChevronRight className="folder-icon" />
                     )}
-                    <Folder className="folder-icon" />
+                    {group.isClientFolder ? (
+                      <Briefcase className="folder-icon" style={{ color: '#764ba2' }} />
+                    ) : (
+                      <Folder className="folder-icon" />
+                    )}
                     <span className="folder-name">
                       {group.folderName}
                       {!group.exists && (
                         <span style={{ marginLeft: '0.5rem', fontSize: '0.85rem', color: '#48bb78' }}>
                           (New)
+                        </span>
+                      )}
+                      {group.isClientFolder && group.clientInfo && (
+                        <span style={{
+                          marginLeft: '0.5rem',
+                          fontSize: '0.75rem',
+                          color: '#764ba2',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.25rem'
+                        }}>
+                          <Award size={14} />
+                          {group.clientInfo.confidence}% confident
                         </span>
                       )}
                     </span>

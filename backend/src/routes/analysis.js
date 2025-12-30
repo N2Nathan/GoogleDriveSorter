@@ -1,6 +1,7 @@
 import express from 'express';
 import { analyzeFileName, performOCR, analyzeFileContent } from '../services/analysis.js';
 import { getCachedAnalysis, saveCachedAnalysis } from '../database/db.js';
+import { analyzeFileForClient, shouldOrganizeByClient, getClientFolderPath } from '../services/clientDetection.js';
 
 const router = express.Router();
 
@@ -70,7 +71,7 @@ router.post('/file', async (req, res) => {
 // Batch analyze multiple files
 router.post('/batch', async (req, res) => {
   try {
-    const { files } = req.body;
+    const { files, includeClientDetection = true } = req.body;
     const results = [];
 
     for (const file of files) {
@@ -83,6 +84,7 @@ router.post('/batch', async (req, res) => {
             originalName: cached.original_name,
             suggestedName: cached.suggested_name,
             analysis: cached.analysis_data,
+            client: cached.analysis_data?.client || null,
             fromCache: true
           });
           continue;
@@ -91,6 +93,19 @@ router.post('/batch', async (req, res) => {
         // Simple analysis based on filename
         const analysis = await analyzeFileName(file.fileName);
 
+        // Detect client if enabled
+        let detectedClient = null;
+        if (includeClientDetection) {
+          detectedClient = await analyzeFileForClient({
+            fileId: file.fileId,
+            fileName: file.fileName,
+            mimeType: file.mimeType
+          });
+        }
+
+        // Add client to analysis
+        analysis.client = detectedClient;
+
         await saveCachedAnalysis(file.fileId, file.fileName, analysis.suggestedName, analysis);
 
         results.push({
@@ -98,6 +113,7 @@ router.post('/batch', async (req, res) => {
           originalName: file.fileName,
           suggestedName: analysis.suggestedName,
           analysis,
+          client: detectedClient,
           fromCache: false
         });
       } catch (error) {
@@ -122,36 +138,91 @@ router.post('/suggest-folders', async (req, res) => {
   try {
     const { analyzedFiles, existingFolders } = req.body;
 
-    // Group files by category
-    const categories = {};
+    // Separate files into client-based and category-based
+    const clientFiles = {};
+    const categoryFiles = {};
 
     analyzedFiles.forEach(file => {
-      const category = determineCategory(file);
-      if (!categories[category]) {
-        categories[category] = [];
+      // Check if file has client detected and should be organized by client
+      if (file.client && shouldOrganizeByClient(file.client, file.originalName)) {
+        const clientFolder = getClientFolderPath(file.client.name);
+        if (!clientFiles[clientFolder]) {
+          clientFiles[clientFolder] = {
+            client: file.client,
+            files: []
+          };
+        }
+        clientFiles[clientFolder].files.push(file);
+      } else {
+        // Regular category-based organization
+        const category = determineCategory(file);
+        if (!categoryFiles[category]) {
+          categoryFiles[category] = [];
+        }
+        categoryFiles[category].push(file);
       }
-      categories[category].push(file);
     });
 
-    // Check which categories already have folders
-    const existingFolderNames = existingFolders.map(f => f.name.toLowerCase());
+    const suggestions = [];
 
-    const suggestions = Object.entries(categories).map(([category, files]) => {
+    // Add client-based suggestions
+    Object.entries(clientFiles).forEach(([folderPath, data]) => {
+      const folderName = folderPath; // e.g., "Clients/Acme Corp"
+
+      // Check if this client folder exists
+      const exists = existingFolders.find(
+        f => f.name.toLowerCase() === folderName.toLowerCase() ||
+             f.name.toLowerCase() === data.client.name.toLowerCase()
+      );
+
+      suggestions.push({
+        folderName: folderName,
+        fileCount: data.files.length,
+        exists: !!exists,
+        folderId: exists?.id || null,
+        isClientFolder: true,
+        clientInfo: {
+          name: data.client.name,
+          confidence: data.client.confidence,
+          sources: data.client.sources
+        },
+        files: data.files.map(f => ({
+          fileId: f.fileId,
+          originalName: f.originalName,
+          suggestedName: f.suggestedName,
+          client: f.client
+        }))
+      });
+    });
+
+    // Add category-based suggestions
+    Object.entries(categoryFiles).forEach(([category, files]) => {
       const exists = existingFolders.find(
         f => f.name.toLowerCase() === category.toLowerCase()
       );
 
-      return {
+      suggestions.push({
         folderName: category,
         fileCount: files.length,
         exists: !!exists,
         folderId: exists?.id || null,
+        isClientFolder: false,
         files: files.map(f => ({
           fileId: f.fileId,
           originalName: f.originalName,
           suggestedName: f.suggestedName
         }))
-      };
+      });
+    });
+
+    // Sort: client folders first (by confidence), then category folders
+    suggestions.sort((a, b) => {
+      if (a.isClientFolder && !b.isClientFolder) return -1;
+      if (!a.isClientFolder && b.isClientFolder) return 1;
+      if (a.isClientFolder && b.isClientFolder) {
+        return b.clientInfo.confidence - a.clientInfo.confidence;
+      }
+      return 0;
     });
 
     res.json({ suggestions });
