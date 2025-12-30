@@ -13,7 +13,7 @@ This guide explains how to run the Google Drive Organizer using Docker.
 ### 1. Clone the Repository
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/N2Nathan/GoogleDriveSorter.git
 cd GoogleDriveSorter
 ```
 

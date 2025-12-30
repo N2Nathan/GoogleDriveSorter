@@ -52,7 +52,7 @@ An intelligent Google Drive file organizer with OCR, AI-powered file naming, cli
 ### 1. Clone the Repository
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/N2Nathan/GoogleDriveSorter.git
 cd GoogleDriveSorter
 ```
 
