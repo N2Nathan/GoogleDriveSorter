@@ -6,35 +6,59 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     ports:
-      - "3001:3001"
+      - "${BACKEND_PORT:-3001}:3001"
     environment:
-      - PORT=3001
-      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
-      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      # Server Configuration
+      - PORT=${PORT:-3001}
+      - NODE_ENV=${NODE_ENV:-production}
+
+      # Google OAuth (REQUIRED)
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:?GOOGLE_CLIENT_ID is required}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:?GOOGLE_CLIENT_SECRET is required}
       - GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI:-http://localhost:3001/auth/google/callback}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - SESSION_SECRET=${SESSION_SECRET}
+
+      # OpenAI Configuration (OPTIONAL - for AI features)
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-}
+
+      # Session Security (REQUIRED)
+      - SESSION_SECRET=${SESSION_SECRET:?SESSION_SECRET is required}
+
+      # CORS Configuration
       - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
-      - NODE_ENV=production
     volumes:
       - backend-data:/app/data
     restart: unless-stopped
     networks:
       - app-network
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        - VITE_API_URL=${VITE_API_URL:-http://localhost:3001}
     ports:
-      - "3000:80"
+      - "${FRONTEND_PORT:-3000}:80"
     environment:
       - VITE_API_URL=${VITE_API_URL:-http://localhost:3001}
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     restart: unless-stopped
     networks:
       - app-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:80"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
 volumes:
   backend-data:

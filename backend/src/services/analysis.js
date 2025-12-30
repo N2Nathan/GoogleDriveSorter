@@ -4,8 +4,12 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+// Support custom OpenAI-compatible endpoints (e.g., vLLM, LocalAI, Ollama)
 const openai = process.env.OPENAI_API_KEY
-  ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  ? new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+      baseURL: process.env.OPENAI_BASE_URL || undefined // Use custom URL if provided
+    })
   : null;
 
 export async function performOCR(base64Image) {

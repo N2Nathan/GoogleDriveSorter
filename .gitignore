@@ -11,6 +11,10 @@ yarn-error.log*
 .env.development.local
 .env.test.local
 .env.production.local
+docker.env
+
+# Docker override (for local customization)
+docker-compose.override.yml
 
 # Database
 backend/data/
